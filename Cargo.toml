@@ -1,10 +1,20 @@
 [package]
 name = "infinite-redirect"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 warp = "0.3"
 tokio = { version = "1", features = ["full"] }
 rand_core = "0.6"
 base64 = "0.21"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3
+debug = false
+incremental = false
+overflow-checks = true

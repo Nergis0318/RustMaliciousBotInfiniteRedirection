@@ -1,31 +1,23 @@
-# Rust multi-stage build for infinite redirect service
-FROM rust:1.70-alpine AS builder
-
-# Install build dependencies
-RUN apk update && apk upgrade && \
-    apk add --no-cache gcc musl-dev
-
+# Using the `rust-musl-builder` as base image, instead of
+# the official Rust toolchain
+FROM clux/muslrust:stable AS chef
+USER root
+RUN cargo install --locked cargo-chef
 WORKDIR /app
 
-# Copy source files
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build in release mode for small binary
-RUN cargo build --release
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Notice that we are specifying the --target flag!
+RUN cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+COPY . .
+RUN cargo build --release --target x86_64-unknown-linux-musl --bin infinite-redirect
 
-# Final stage with minimal image
-FROM alpine:3.18
-
-# Install runtime dependencies (none needed for static build)
-RUN apk update && apk upgrade
-
-WORKDIR /app
-
-# Copy the built binary
-COPY --from=builder /app/target/release/infinite-redirect .
-
-# Run the service
-EXPOSE 80
-
-ENTRYPOINT ["./infinite-redirect"]
+FROM alpine AS runtime
+RUN addgroup -S myuser && adduser -S myuser -G myuser
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/infinite-redirect /usr/local/bin/
+USER myuser
+CMD ["/usr/local/bin/infinite-redirect"]
